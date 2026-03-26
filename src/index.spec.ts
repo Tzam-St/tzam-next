@@ -99,4 +99,27 @@ describe('createTzamClient', () => {
       await expect(client.login('a@b.com', 'wrong')).rejects.toThrow('Invalid credentials');
     });
   });
+
+  describe('logout', () => {
+    it('should call IdP logout with access token and refresh token', async () => {
+      mockFetch.mockResolvedValue({ ok: true, json: async () => ({ success: true }) });
+
+      await client.logout('my-access-token', 'my-refresh-token');
+
+      expect(mockFetch).toHaveBeenCalledWith('http://localhost:4000/auth/logout', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: 'Bearer my-access-token',
+          Cookie: 'refresh_token=my-refresh-token',
+        },
+      });
+    });
+
+    it('should not throw when logout fails', async () => {
+      mockFetch.mockRejectedValue(new Error('Network error'));
+
+      await expect(client.logout('token', 'refresh')).resolves.toBeUndefined();
+    });
+  });
 });

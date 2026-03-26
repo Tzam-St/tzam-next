@@ -99,7 +99,22 @@ export function createTzamClient(config: TzamConfig) {
     return { accessToken: data.accessToken };
   }
 
-  return { login, register, validateToken, refreshToken };
+  async function logout(accessToken: string, refreshTokenValue: string): Promise<void> {
+    try {
+      await fetch(`${url}/auth/logout`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${accessToken}`,
+          Cookie: `refresh_token=${refreshTokenValue}`,
+        },
+      });
+    } catch {
+      // Best-effort — don't block client logout if IdP is unreachable
+    }
+  }
+
+  return { login, register, validateToken, refreshToken, logout };
 }
 
 export type TzamClient = ReturnType<typeof createTzamClient>;
