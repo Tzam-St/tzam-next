@@ -131,7 +131,36 @@ export function createTzamClient(config: TzamConfig) {
     return `${url}/auth/magic-link/verify?token=${encodeURIComponent(token)}`;
   }
 
-  return { login, register, validateToken, refreshToken, logout, requestMagicLink, getMagicLinkVerifyUrl };
+  async function requestOtp(email: string): Promise<void> {
+    const response = await fetch(`${url}/auth/otp`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email }),
+    });
+
+    if (!response.ok && response.status !== 204) {
+      const error = (await response.json().catch(() => ({ message: 'OTP request failed' }))) as ApiError;
+      throw new Error(error.message || 'OTP request failed');
+    }
+  }
+
+  async function verifyOtp(email: string, code: string): Promise<LoginResult> {
+    const response = await fetch(`${url}/auth/otp/verify`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, code }),
+    });
+
+    if (!response.ok) {
+      const error = (await response.json().catch(() => ({ message: 'Invalid code' }))) as ApiError;
+      throw new Error(error.message || 'Invalid code');
+    }
+
+    const data = (await response.json()) as LoginResponse;
+    return { accessToken: data.accessToken, refreshToken: data.refreshToken, user: data.user };
+  }
+
+  return { login, register, validateToken, refreshToken, logout, requestMagicLink, getMagicLinkVerifyUrl, requestOtp, verifyOtp };
 }
 
 export type TzamClient = ReturnType<typeof createTzamClient>;
