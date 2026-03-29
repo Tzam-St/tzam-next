@@ -118,7 +118,7 @@ export function createTzamClient(config: TzamConfig) {
     const response = await fetch(`${url}/auth/magic-link`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email, redirect }),
+      body: JSON.stringify({ email, redirect, client_id: clientId }),
     });
 
     if (!response.ok && response.status !== 204) {
@@ -135,7 +135,7 @@ export function createTzamClient(config: TzamConfig) {
     const response = await fetch(`${url}/auth/otp`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email }),
+      body: JSON.stringify({ email, client_id: clientId }),
     });
 
     if (!response.ok && response.status !== 204) {

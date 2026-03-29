@@ -94,7 +94,7 @@ function createTzamClient(config) {
     const response = await fetch(`${url}/auth/magic-link`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email, redirect })
+      body: JSON.stringify({ email, redirect, client_id: clientId })
     });
     if (!response.ok && response.status !== 204) {
       const error = await response.json().catch(() => ({ message: "Magic link request failed" }));
@@ -108,7 +108,7 @@ function createTzamClient(config) {
     const response = await fetch(`${url}/auth/otp`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email })
+      body: JSON.stringify({ email, client_id: clientId })
     });
     if (!response.ok && response.status !== 204) {
       const error = await response.json().catch(() => ({ message: "OTP request failed" }));
