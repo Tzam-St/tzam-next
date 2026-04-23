@@ -64,6 +64,22 @@ export class PasswordMethodDisabledError extends Error {
   }
 }
 
+export class MagicLinkMethodDisabledError extends Error {
+  readonly code = 'MAGIC_LINK_METHOD_DISABLED' as const;
+  constructor(public readonly clientId: string) {
+    super(`Magic-link authentication is disabled for client_id=${clientId}`);
+    this.name = 'MagicLinkMethodDisabledError';
+  }
+}
+
+export class OtpMethodDisabledError extends Error {
+  readonly code = 'OTP_METHOD_DISABLED' as const;
+  constructor(public readonly clientId: string) {
+    super(`OTP authentication is disabled for client_id=${clientId}`);
+    this.name = 'OtpMethodDisabledError';
+  }
+}
+
 export function createTzamClient(config: TzamConfig) {
   const { url, clientId, clientSecret } = config;
 
@@ -142,6 +158,10 @@ export function createTzamClient(config: TzamConfig) {
   }
 
   async function requestMagicLink(email: string, redirect?: string): Promise<void> {
+    const cfg = await getAuthMethods();
+    if (!cfg.active) throw new AppInactiveError(clientId);
+    if (!cfg.methods.magicLink) throw new MagicLinkMethodDisabledError(clientId);
+
     const response = await fetch(`${url}/auth/magic-link`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -226,6 +246,10 @@ export function createTzamClient(config: TzamConfig) {
   }
 
   async function requestOtp(email: string): Promise<void> {
+    const cfg = await getAuthMethods();
+    if (!cfg.active) throw new AppInactiveError(clientId);
+    if (!cfg.methods.otp) throw new OtpMethodDisabledError(clientId);
+
     const response = await fetch(`${url}/auth/otp`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },

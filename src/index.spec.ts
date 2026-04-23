@@ -1,8 +1,16 @@
-import { createTzamClient, PasswordMethodDisabledError, AppInactiveError } from './index';
+import {
+  createTzamClient,
+  PasswordMethodDisabledError,
+  MagicLinkMethodDisabledError,
+  OtpMethodDisabledError,
+  AppInactiveError,
+} from './index';
 
 const appConfigOk = (overrides: {
   active?: boolean;
   password?: boolean;
+  magicLink?: boolean;
+  otp?: boolean;
 } = {}) => ({
   ok: true,
   status: 200,
@@ -11,8 +19,8 @@ const appConfigOk = (overrides: {
     active: overrides.active ?? true,
     methods: {
       password: overrides.password ?? true,
-      magicLink: false,
-      otp: false,
+      magicLink: overrides.magicLink ?? true,
+      otp: overrides.otp ?? true,
       oauth: { github: false, google: false },
     },
   }),
@@ -201,6 +209,78 @@ describe('createTzamClient', () => {
         json: async () => ({}),
       });
       await expect(client.forgotPassword('a@b.com')).rejects.toThrow('Forgot password failed');
+    });
+  });
+
+  describe('requestMagicLink', () => {
+    it('probes /auth/app-config then posts when magic link is enabled', async () => {
+      mockFetch
+        .mockResolvedValueOnce(appConfigOk())
+        .mockResolvedValueOnce({ ok: true, status: 204 });
+
+      await client.requestMagicLink('user@example.com', '/after-login');
+
+      expect(mockFetch).toHaveBeenNthCalledWith(
+        1,
+        'http://localhost:4000/auth/app-config?client_id=test-client',
+        { method: 'GET', headers: { 'Content-Type': 'application/json' } },
+      );
+      expect(mockFetch).toHaveBeenNthCalledWith(2, 'http://localhost:4000/auth/magic-link', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: 'user@example.com', redirect: '/after-login', client_id: 'test-client' }),
+      });
+    });
+
+    it('throws MagicLinkMethodDisabledError when magic link is disabled', async () => {
+      mockFetch.mockResolvedValueOnce(appConfigOk({ magicLink: false }));
+
+      await expect(client.requestMagicLink('a@b.com')).rejects.toBeInstanceOf(
+        MagicLinkMethodDisabledError,
+      );
+      expect(mockFetch).toHaveBeenCalledTimes(1);
+    });
+
+    it('throws AppInactiveError when the app is inactive', async () => {
+      mockFetch.mockResolvedValueOnce(appConfigOk({ active: false }));
+
+      await expect(client.requestMagicLink('a@b.com')).rejects.toBeInstanceOf(AppInactiveError);
+      expect(mockFetch).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe('requestOtp', () => {
+    it('probes /auth/app-config then posts when OTP is enabled', async () => {
+      mockFetch
+        .mockResolvedValueOnce(appConfigOk())
+        .mockResolvedValueOnce({ ok: true, status: 204 });
+
+      await client.requestOtp('user@example.com');
+
+      expect(mockFetch).toHaveBeenNthCalledWith(
+        1,
+        'http://localhost:4000/auth/app-config?client_id=test-client',
+        { method: 'GET', headers: { 'Content-Type': 'application/json' } },
+      );
+      expect(mockFetch).toHaveBeenNthCalledWith(2, 'http://localhost:4000/auth/otp', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: 'user@example.com', client_id: 'test-client' }),
+      });
+    });
+
+    it('throws OtpMethodDisabledError when OTP is disabled', async () => {
+      mockFetch.mockResolvedValueOnce(appConfigOk({ otp: false }));
+
+      await expect(client.requestOtp('a@b.com')).rejects.toBeInstanceOf(OtpMethodDisabledError);
+      expect(mockFetch).toHaveBeenCalledTimes(1);
+    });
+
+    it('throws AppInactiveError when the app is inactive', async () => {
+      mockFetch.mockResolvedValueOnce(appConfigOk({ active: false }));
+
+      await expect(client.requestOtp('a@b.com')).rejects.toBeInstanceOf(AppInactiveError);
+      expect(mockFetch).toHaveBeenCalledTimes(1);
     });
   });
 
