@@ -1,4 +1,22 @@
-import { createTzamClient } from './index';
+import { createTzamClient, PasswordMethodDisabledError, AppInactiveError } from './index';
+
+const appConfigOk = (overrides: {
+  active?: boolean;
+  password?: boolean;
+} = {}) => ({
+  ok: true,
+  status: 200,
+  json: async () => ({
+    clientId: 'test-client',
+    active: overrides.active ?? true,
+    methods: {
+      password: overrides.password ?? true,
+      magicLink: false,
+      otp: false,
+      oauth: { github: false, google: false },
+    },
+  }),
+});
 
 const mockFetch = jest.fn();
 global.fetch = mockFetch;
@@ -124,12 +142,19 @@ describe('createTzamClient', () => {
   });
 
   describe('forgotPassword', () => {
-    it('posts email + clientId so the IdP routes through the per-app SMTP', async () => {
-      mockFetch.mockResolvedValue({ ok: true, status: 204 });
+    it('probes /auth/app-config then posts to /auth/forgot-password when password is enabled', async () => {
+      mockFetch
+        .mockResolvedValueOnce(appConfigOk())
+        .mockResolvedValueOnce({ ok: true, status: 204 });
 
       await client.forgotPassword('user@example.com');
 
-      expect(mockFetch).toHaveBeenCalledWith('http://localhost:4000/auth/forgot-password', {
+      expect(mockFetch).toHaveBeenNthCalledWith(
+        1,
+        'http://localhost:4000/auth/app-config?client_id=test-client',
+        { method: 'GET', headers: { 'Content-Type': 'application/json' } },
+      );
+      expect(mockFetch).toHaveBeenNthCalledWith(2, 'http://localhost:4000/auth/forgot-password', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email: 'user@example.com', clientId: 'test-client' }),
@@ -137,12 +162,31 @@ describe('createTzamClient', () => {
     });
 
     it('treats 204 as success (no body to parse)', async () => {
-      mockFetch.mockResolvedValue({ ok: true, status: 204 });
+      mockFetch
+        .mockResolvedValueOnce(appConfigOk())
+        .mockResolvedValueOnce({ ok: true, status: 204 });
       await expect(client.forgotPassword('a@b.com')).resolves.toBeUndefined();
     });
 
+    it('throws PasswordMethodDisabledError when password method is disabled for the app', async () => {
+      mockFetch.mockResolvedValueOnce(appConfigOk({ password: false }));
+
+      await expect(client.forgotPassword('a@b.com')).rejects.toBeInstanceOf(
+        PasswordMethodDisabledError,
+      );
+      // Server is never hit — fail-fast at the probe
+      expect(mockFetch).toHaveBeenCalledTimes(1);
+    });
+
+    it('throws AppInactiveError when the application is inactive', async () => {
+      mockFetch.mockResolvedValueOnce(appConfigOk({ active: false }));
+
+      await expect(client.forgotPassword('a@b.com')).rejects.toBeInstanceOf(AppInactiveError);
+      expect(mockFetch).toHaveBeenCalledTimes(1);
+    });
+
     it('throws with server message when request fails', async () => {
-      mockFetch.mockResolvedValue({
+      mockFetch.mockResolvedValueOnce(appConfigOk()).mockResolvedValueOnce({
         ok: false,
         status: 500,
         json: async () => ({ message: 'Mail provider unavailable' }),
@@ -151,7 +195,7 @@ describe('createTzamClient', () => {
     });
 
     it('falls back to a generic message when the server payload has none', async () => {
-      mockFetch.mockResolvedValue({
+      mockFetch.mockResolvedValueOnce(appConfigOk()).mockResolvedValueOnce({
         ok: false,
         status: 500,
         json: async () => ({}),

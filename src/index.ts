@@ -48,6 +48,22 @@ export interface AppConfig {
   };
 }
 
+export class AppInactiveError extends Error {
+  readonly code = 'APP_INACTIVE' as const;
+  constructor(public readonly clientId: string) {
+    super(`Application client_id=${clientId} is inactive`);
+    this.name = 'AppInactiveError';
+  }
+}
+
+export class PasswordMethodDisabledError extends Error {
+  readonly code = 'PASSWORD_METHOD_DISABLED' as const;
+  constructor(public readonly clientId: string) {
+    super(`Email/password authentication is disabled for client_id=${clientId}`);
+    this.name = 'PasswordMethodDisabledError';
+  }
+}
+
 export function createTzamClient(config: TzamConfig) {
   const { url, clientId, clientSecret } = config;
 
@@ -170,11 +186,16 @@ export function createTzamClient(config: TzamConfig) {
    *
    * 204 does NOT guarantee an email was sent: if the app is inactive or the
    * Email/Senha method is disabled for the app, the server silently drops
-   * the request (same status) to avoid leaking configuration. Call
-   * getAuthMethods() first to check methods.password before offering the
-   * reset flow to the user.
+   * the request (same status) to avoid leaking configuration. To turn that
+   * silent drop into an actionable error this method probes /auth/app-config
+   * first and throws AppInactiveError / PasswordMethodDisabledError before
+   * hitting the endpoint.
    */
   async function forgotPassword(email: string): Promise<void> {
+    const cfg = await getAuthMethods();
+    if (!cfg.active) throw new AppInactiveError(clientId);
+    if (!cfg.methods.password) throw new PasswordMethodDisabledError(clientId);
+
     const response = await fetch(`${url}/auth/forgot-password`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
